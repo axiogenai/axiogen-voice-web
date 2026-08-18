@@ -1,5 +1,5 @@
 // Axiogen Voice Pro — TTS API client
-// Calls the HF Space Gradio API, splits text, streams audio chunks
+// Calls the HF Space Gradio API
 
 export const HF_BASE =
   import.meta.env.VITE_HF_BASE ?? 'https://adityax26-axiogenttspro.hf.space'
@@ -7,25 +7,24 @@ export const HF_BASE =
 export interface Voice {
   id: string
   name: string
-  emoji: string
   accent: string
   gender: string
   style: string
 }
 
 export const VOICES: Voice[] = [
-  { id: 'af_bella',   name: 'Bella',   emoji: '✨', accent: 'American', gender: 'Female', style: 'Warm & Natural' },
-  { id: 'af_heart',   name: 'Heart',   emoji: '❤️', accent: 'American', gender: 'Female', style: 'Soft & Expressive' },
-  { id: 'af_sarah',   name: 'Sarah',   emoji: '💼', accent: 'American', gender: 'Female', style: 'Professional' },
-  { id: 'af_nicole',  name: 'Nicole',  emoji: '🌟', accent: 'American', gender: 'Female', style: 'Friendly' },
-  { id: 'af_sky',     name: 'Sky',     emoji: '☁️', accent: 'American', gender: 'Female', style: 'Energetic' },
-  { id: 'am_adam',    name: 'Adam',    emoji: '🎙️', accent: 'American', gender: 'Male',   style: 'Deep & Authoritative' },
-  { id: 'am_michael', name: 'Michael', emoji: '🎧', accent: 'American', gender: 'Male',   style: 'Warm & Trustworthy' },
-  { id: 'bf_emma',    name: 'Emma',    emoji: '👑', accent: 'British',  gender: 'Female', style: 'Elegant & Refined' },
-  { id: 'bf_alice',   name: 'Alice',   emoji: '🫖', accent: 'British',  gender: 'Female', style: 'Classic British' },
-  { id: 'bf_lily',    name: 'Lily',    emoji: '🌸', accent: 'British',  gender: 'Female', style: 'Sweet & Gentle' },
-  { id: 'bm_george',  name: 'George',  emoji: '🎩', accent: 'British',  gender: 'Male',   style: 'Distinguished' },
-  { id: 'bm_daniel',  name: 'Daniel',  emoji: '📻', accent: 'British',  gender: 'Male',   style: 'Modern British' },
+  { id: 'af_bella',   name: 'Bella',   accent: 'American', gender: 'Female', style: 'Warm & Natural' },
+  { id: 'af_heart',   name: 'Heart',   accent: 'American', gender: 'Female', style: 'Soft & Expressive' },
+  { id: 'af_sarah',   name: 'Sarah',   accent: 'American', gender: 'Female', style: 'Professional' },
+  { id: 'af_nicole',  name: 'Nicole',  accent: 'American', gender: 'Female', style: 'Conversational' },
+  { id: 'af_sky',     name: 'Sky',     accent: 'American', gender: 'Female', style: 'Energetic' },
+  { id: 'am_adam',    name: 'Adam',    accent: 'American', gender: 'Male',   style: 'Deep & Authoritative' },
+  { id: 'am_michael', name: 'Michael', accent: 'American', gender: 'Male',   style: 'Warm & Trustworthy' },
+  { id: 'bf_emma',    name: 'Emma',    accent: 'British',  gender: 'Female', style: 'Refined' },
+  { id: 'bf_alice',   name: 'Alice',   accent: 'British',  gender: 'Female', style: 'Classic' },
+  { id: 'bf_lily',    name: 'Lily',    accent: 'British',  gender: 'Female', style: 'Gentle' },
+  { id: 'bm_george',  name: 'George',  accent: 'British',  gender: 'Male',   style: 'Distinguished' },
+  { id: 'bm_daniel',  name: 'Daniel',  accent: 'British',  gender: 'Male',   style: 'Modern' },
 ]
 
 // Split text into sentence-sized chunks for streaming
@@ -52,7 +51,7 @@ export function splitSentences(text: string): string[] {
   return out.length ? out : [text.trim()]
 }
 
-// Generate audio for a single sentence → returns base64 WAV
+// Generate audio for a single sentence / full text → returns base64 WAV
 export async function generateChunk(
   sentence: string,
   voice: string,
@@ -63,7 +62,7 @@ export async function generateChunk(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data: [sentence, voice, speed] }),
   })
-  if (!r1.ok) throw new Error(`API error ${r1.status}`)
+  if (!r1.ok) throw new Error(`Engine error (${r1.status})`)
   const { event_id } = await r1.json()
 
   const r2 = await fetch(`${HF_BASE}/gradio_api/call/generate_gpu_b64/${event_id}`)
@@ -77,7 +76,7 @@ export async function generateChunk(
       } catch { /* skip */ }
     }
   }
-  throw new Error('No audio data in response')
+  throw new Error('No audio data received')
 }
 
 // base64 → ArrayBuffer
