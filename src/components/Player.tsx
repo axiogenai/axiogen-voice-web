@@ -32,7 +32,7 @@ export function Player({ voice, speed }: PlayerProps) {
     setFirstSoundMs(null)
     setTotalMs(null)
 
-    // Stop and close any previous audio stream immediately
+    // Terminate any previous audio context to prevent overlapping playback
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       try {
         await audioContextRef.current.close()
@@ -52,7 +52,7 @@ export function Player({ voice, speed }: PlayerProps) {
     let firstPlayed = false
     const t0 = performance.now()
     const allBuffers: ArrayBuffer[] = []
-    let receivedChunks = 0
+    const processedIndices = new Set<number>()
 
     try {
       // 1. INITIATE STREAM VIA GRADIO SSE ENDPOINT
@@ -88,8 +88,14 @@ export function Player({ voice, speed }: PlayerProps) {
               const jsonStr = Array.isArray(raw) ? raw[0] : raw
               const payload = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
 
-              if (payload && payload.audio) {
-                receivedChunks++
+              // CRITICAL: DEDUPLICATE CHUNKS BY INDEX (Gradio SSE sends generating + complete duplicate)
+              if (payload && payload.audio && typeof payload.index === 'number') {
+                if (processedIndices.has(payload.index)) {
+                  // Skip duplicate chunk emitted by Gradio event: complete
+                  continue
+                }
+                processedIndices.add(payload.index)
+
                 setStatusMsg(`Streaming chunk ${payload.index + 1}: "${payload.text.slice(0, 30)}..."`)
 
                 const ab = b64toArrayBuffer(payload.audio)
@@ -124,7 +130,7 @@ export function Player({ voice, speed }: PlayerProps) {
       const elapsed = Math.round(performance.now() - t0)
       setTotalMs(elapsed)
       setStatus('done')
-      setStatusMsg(`Stream complete (${receivedChunks} chunks rendered)`)
+      setStatusMsg(`Stream complete (${processedIndices.size} chunks rendered)`)
 
       // Create merged full audio for seekable replay
       const mergedBlob = mergeWAVs(allBuffers)
