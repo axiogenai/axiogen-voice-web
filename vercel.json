@@ -1,6 +1,16 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/(.*)",     "destination": "/index.html" }
+    {
+      "source": "/api/gradio_api/:path*",
+      "destination": "https://adityax26-axiogenttspro.hf.space/gradio_api/:path*"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://adityax26-axiogenttspro.hf.space/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }
