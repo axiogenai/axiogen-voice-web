@@ -1,12 +1,18 @@
 {
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS, PUT, DELETE" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, X-Requested-With" }
+      ]
+    }
+  ],
   "rewrites": [
     {
-      "source": "/api/gradio_api/:path*",
-      "destination": "https://adityax26-axiogenttspro.hf.space/gradio_api/:path*"
-    },
-    {
-      "source": "/api/:path*",
-      "destination": "https://adityax26-axiogenttspro.hf.space/:path*"
+      "source": "/api/(.*)",
+      "destination": "https://adityax26-axiogenttspro.hf.space/$1"
     },
     {
       "source": "/(.*)",
