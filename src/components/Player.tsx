@@ -1,16 +1,17 @@
 import { useState, useCallback, useRef } from 'react'
 import { HF_BASE, b64toArrayBuffer, mergeWAVs } from '../lib/tts'
 import { Wave } from './Wave'
-import { Volume2, CheckCircle2, AlertCircle, Zap } from 'lucide-react'
+import { Volume2, CheckCircle2, Zap, ShieldAlert } from 'lucide-react'
 
 interface PlayerProps {
   voice: string
   speed: number
+  apiKey: string
 }
 
 type Status = 'idle' | 'streaming' | 'done' | 'error'
 
-export function Player({ voice, speed }: PlayerProps) {
+export function Player({ voice, speed, apiKey }: PlayerProps) {
   const [text, setText] = useState(
     'Hello! Welcome to Axiogen Voice Pro.\n\nOur streaming engine yields audio chunks clause by clause over an open SSE connection. Chunk 1 begins playing immediately while subsequent speech is synthesized in the background without delay.'
   )
@@ -26,8 +27,15 @@ export function Player({ voice, speed }: PlayerProps) {
     const trimmed = text.trim()
     if (!trimmed) return
 
+    // STRICT API KEY ENFORCEMENT
+    if (!apiKey || !apiKey.trim()) {
+      setStatus('error')
+      setStatusMsg('Unauthorized: API key required. Please enter an active key in the sidebar.')
+      return
+    }
+
     setStatus('streaming')
-    setStatusMsg('Connecting stream...')
+    setStatusMsg('Authenticating and connecting stream...')
     setAudioUrl(null)
     setFirstSoundMs(null)
     setTotalMs(null)
@@ -55,14 +63,14 @@ export function Player({ voice, speed }: PlayerProps) {
     const processedIndices = new Set<number>()
 
     try {
-      // 1. INITIATE STREAM VIA GRADIO SSE ENDPOINT
+      // 1. INITIATE STREAM VIA GRADIO SSE ENDPOINT WITH STRICT AUTH KEY
       const initRes = await fetch(`${HF_BASE}/gradio_api/call/stream_tts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: [trimmed, voice, speed] })
+        body: JSON.stringify({ data: [trimmed, voice, speed, apiKey.trim()] })
       })
 
-      if (!initRes.ok) throw new Error(`Stream initialization failed (${initRes.status})`)
+      if (!initRes.ok) throw new Error(`Authentication/Server error (${initRes.status})`)
       const { event_id } = await initRes.json()
 
       // 2. READ SSE CHUNK STREAM USING GETREADER()
@@ -88,10 +96,14 @@ export function Player({ voice, speed }: PlayerProps) {
               const jsonStr = Array.isArray(raw) ? raw[0] : raw
               const payload = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
 
+              // Check if backend returned authentication error
+              if (payload && payload.error) {
+                throw new Error(payload.error)
+              }
+
               // CRITICAL: DEDUPLICATE CHUNKS BY INDEX (Gradio SSE sends generating + complete duplicate)
               if (payload && payload.audio && typeof payload.index === 'number') {
                 if (processedIndices.has(payload.index)) {
-                  // Skip duplicate chunk emitted by Gradio event: complete
                   continue
                 }
                 processedIndices.add(payload.index)
@@ -120,8 +132,10 @@ export function Player({ voice, speed }: PlayerProps) {
                 source.start(nextStartTime)
                 nextStartTime += audioBuffer.duration
               }
-            } catch (e) {
-              // Ignore partial JSON chunks
+            } catch (e: any) {
+              if (e.message && e.message.includes('Unauthorized')) {
+                throw e
+              }
             }
           }
         }
@@ -142,7 +156,7 @@ export function Player({ voice, speed }: PlayerProps) {
       setStatus('error')
       setStatusMsg(err.message ?? 'Streaming error')
     }
-  }, [text, voice, speed, status])
+  }, [text, voice, speed, apiKey, status])
 
   const isStreaming = status === 'streaming'
 
@@ -161,7 +175,7 @@ export function Player({ voice, speed }: PlayerProps) {
         <div className="flex justify-between items-center pt-1">
           <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
             <Zap className="w-3 h-3 text-violet-400" />
-            <span>First chunk plays immediately upon arrival</span>
+            <span>Strict Auth · Instant first-chunk streaming</span>
           </div>
           <span className="text-[11px] font-mono text-zinc-500">
             {text.length} / 5000
@@ -184,7 +198,7 @@ export function Player({ voice, speed }: PlayerProps) {
         ) : (
           <>
             <Volume2 className="w-4 h-4 text-zinc-800" />
-            <span>Stream Speech (Instant First-Chunk Playback)</span>
+            <span>Stream Speech (Authenticated)</span>
           </>
         )}
       </button>
@@ -196,8 +210,8 @@ export function Player({ voice, speed }: PlayerProps) {
             <div className="flex items-center gap-2 text-xs font-medium">
               {isStreaming && <Wave />}
               {status === 'done' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
-              {status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-400" />}
-              <span className={status === 'error' ? 'text-red-400' : 'text-zinc-300'}>
+              {status === 'error' && <ShieldAlert className="w-3.5 h-3.5 text-red-400" />}
+              <span className={status === 'error' ? 'text-red-400 font-semibold' : 'text-zinc-300'}>
                 {statusMsg}
               </span>
             </div>
