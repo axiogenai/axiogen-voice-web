@@ -1,7 +1,8 @@
 // Axiogen Voice Pro — TTS API client
 // Calls the HF Space Gradio API, splits text, streams audio chunks
 
-export const HF_BASE = 'https://adityax26-axiogenttspro.hf.space'
+export const HF_BASE =
+  import.meta.env.VITE_HF_BASE ?? 'https://adityax26-axiogenttspro.hf.space'
 
 export interface Voice {
   id: string
