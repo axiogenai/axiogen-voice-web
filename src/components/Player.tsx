@@ -32,6 +32,15 @@ export function Player({ voice, speed }: PlayerProps) {
     setFirstSoundMs(null)
     setTotalMs(null)
 
+    // Stop and close any previous audio stream immediately
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      try {
+        await audioContextRef.current.close()
+      } catch (e) {
+        // ignore
+      }
+    }
+
     const AudioCtx = window.AudioContext ?? (window as any).webkitAudioContext
     const ctx = new AudioCtx({ sampleRate: 24000 })
     audioContextRef.current = ctx
