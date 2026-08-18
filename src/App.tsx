@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Player } from './components/Player'
 import { VoiceGrid } from './components/VoiceGrid'
 import { ApiKeysTab } from './components/ApiKeysTab'
 import { DocsTab } from './components/DocsTab'
-import { Sliders, Activity, Key, BookOpen, Mic } from 'lucide-react'
+import { Sliders, Activity, Key, BookOpen, Mic, ShieldCheck } from 'lucide-react'
 
 type Tab = 'studio' | 'keys' | 'docs'
 
@@ -11,6 +11,13 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('studio')
   const [voice, setVoice] = useState('af_bella')
   const [speed, setSpeed] = useState(1.0)
+  const [apiKey, setApiKey] = useState<string>(() => {
+    return localStorage.getItem('axiogen_api_key') || 'teamaxiogen_admin_master'
+  })
+
+  useEffect(() => {
+    localStorage.setItem('axiogen_api_key', apiKey)
+  }, [apiKey])
 
   const navItems: { id: Tab; label: string; icon: any }[] = [
     { id: 'studio', label: 'Playground', icon: Mic },
@@ -57,12 +64,18 @@ export default function App() {
         </nav>
 
         {/* Status indicator */}
-        <div className="flex items-center gap-2 text-xs font-medium text-zinc-400">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-          <span className="text-[11px] font-mono text-zinc-400">RTX 6000 Active</span>
+        <div className="flex items-center gap-3 text-xs font-medium">
+          <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 text-[11px] text-emerald-400 font-medium">
+            <ShieldCheck className="h-3 w-3" />
+            <span>Strict Auth</span>
+          </div>
+          <div className="flex items-center gap-2 text-zinc-400">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-[11px] font-mono text-zinc-400">RTX 6000 Active</span>
+          </div>
         </div>
       </header>
 
@@ -83,7 +96,7 @@ export default function App() {
                   </span>
                   <span className="text-[11px] text-zinc-500 font-mono">Max 5,000 characters</span>
                 </div>
-                <Player voice={voice} speed={speed} />
+                <Player voice={voice} speed={speed} apiKey={apiKey} />
               </div>
 
               {/* Voice Selection */}
@@ -125,6 +138,28 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Master Authentication Token */}
+              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 block">
+                    Active API Key
+                  </span>
+                  <span className="text-[10px] font-mono text-emerald-400">Required</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={e => setApiKey(e.target.value)}
+                    placeholder="Enter axg_ key or master token"
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 transition-colors"
+                  />
+                </div>
+                <p className="text-[11px] text-zinc-500 leading-tight">
+                  Synthesis requests are strictly authenticated against this token.
+                </p>
+              </div>
+
               {/* Performance Metrics */}
               <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-5">
                 <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 block mb-3">
@@ -143,16 +178,6 @@ export default function App() {
                     <div className="font-mono text-base font-bold text-zinc-100">FP16</div>
                     <div className="text-[10px] font-medium text-zinc-500 mt-0.5">Precision</div>
                   </div>
-                </div>
-              </div>
-
-              {/* Master Authentication Token */}
-              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-5">
-                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 block mb-2">
-                  Active API Key
-                </span>
-                <div className="flex items-center rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
-                  <span className="font-mono text-xs text-zinc-400">teamaxiogen_admin_master</span>
                 </div>
               </div>
             </div>
