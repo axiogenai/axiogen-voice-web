@@ -3,6 +3,7 @@ import { Player } from './components/Player'
 import { VoiceGrid } from './components/VoiceGrid'
 import { ApiKeysTab } from './components/ApiKeysTab'
 import { DocsTab } from './components/DocsTab'
+import { Sliders, Activity, Key, BookOpen, Mic } from 'lucide-react'
 
 type Tab = 'studio' | 'keys' | 'docs'
 
@@ -11,140 +12,157 @@ export default function App() {
   const [voice, setVoice] = useState('af_bella')
   const [speed, setSpeed] = useState(1.0)
 
-  const navItems: { id: Tab; label: string }[] = [
-    { id: 'studio', label: 'Playground' },
-    { id: 'keys',   label: 'API Keys' },
-    { id: 'docs',   label: 'API Docs' },
+  const navItems: { id: Tab; label: string; icon: any }[] = [
+    { id: 'studio', label: 'Playground', icon: Mic },
+    { id: 'keys',   label: 'API Keys',   icon: Key },
+    { id: 'docs',   label: 'Documentation', icon: BookOpen },
   ]
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-[#09090b] text-zinc-100 antialiased selection:bg-zinc-800 selection:text-white">
 
-      {/* Header */}
-      <header className="sticky top-0 z-40 flex h-[60px] items-center justify-between border-b border-zinc-800 bg-zinc-950/90 px-6 backdrop-blur-md">
+      {/* Clean Enterprise Header */}
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-zinc-800/80 bg-[#09090b]/90 px-6 backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 text-base">
-            ⚡
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-zinc-800 border border-zinc-700 text-zinc-200">
+            <Activity className="h-3.5 w-3.5" />
           </div>
-          <span className="text-lg font-extrabold tracking-tight">Axiogen Voice Pro</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold tracking-tight text-white">Axiogen Voice</span>
+            <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-zinc-800 text-zinc-400 border border-zinc-700/60">v2.0</span>
+          </div>
         </div>
 
-        <nav className="flex gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-1">
-          {navItems.map(n => (
-            <button
-              key={n.id}
-              onClick={() => setTab(n.id)}
-              className={`rounded-md px-4 py-1.5 text-sm font-semibold transition-all duration-150
-                ${tab === n.id
-                  ? 'bg-violet-600 text-white shadow'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                }`}
-            >
-              {n.label}
-            </button>
-          ))}
+        {/* Tab Selector */}
+        <nav className="flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900/60 p-1">
+          {navItems.map(n => {
+            const Icon = n.icon
+            const active = tab === n.id
+            return (
+              <button
+                key={n.id}
+                type="button"
+                onClick={() => setTab(n.id)}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-all duration-150 cursor-pointer
+                  ${active
+                    ? 'bg-zinc-800 text-white shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                  }`}
+              >
+                <Icon className="h-3.5 w-3.5 opacity-70" />
+                <span>{n.label}</span>
+              </button>
+            )
+          })}
         </nav>
 
-        <div className="flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-400">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          RTX 6000 Live
+        {/* Status indicator */}
+        <div className="flex items-center gap-2 text-xs font-medium text-zinc-400">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span className="text-[11px] font-mono text-zinc-400">RTX 6000 Active</span>
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="mx-auto max-w-[1240px] px-5 py-7">
+      {/* Main Container */}
+      <main className="mx-auto max-w-6xl px-6 py-8">
 
-        {/* Studio tab */}
+        {/* Playground Tab */}
         {tab === 'studio' && (
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
 
-            {/* Left column */}
-            <div className="space-y-4">
-              {/* Text input + stream button */}
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-                <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-zinc-400">
-                  📝 Text to Synthesize
-                </p>
+            {/* Main Area */}
+            <div className="space-y-5">
+              {/* Input Card */}
+              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                    Input Text
+                  </span>
+                  <span className="text-[11px] text-zinc-500 font-mono">Max 5,000 characters</span>
+                </div>
                 <Player voice={voice} speed={speed} />
               </div>
 
-              {/* Voice selection */}
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-                <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-zinc-400">
-                  🎭 Voice
-                </p>
-                <VoiceGrid selected={voice} onSelect={setVoice} />
-              </div>
-
-              {/* Speed control */}
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+              {/* Voice Selection */}
+              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-5">
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-[11px] font-extrabold uppercase tracking-wider text-zinc-400">🎚️ Speed</p>
-                  <span className="font-mono text-sm font-bold text-violet-400">{speed.toFixed(2)}×</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                    Voice Model
+                  </span>
+                  <span className="text-[11px] text-zinc-500 font-mono">24kHz Neural</span>
                 </div>
-                <input
-                  type="range"
-                  min={0.5} max={2.0} step={0.05}
-                  value={speed}
-                  onChange={e => setSpeed(parseFloat(e.target.value))}
-                  className="w-full accent-violet-500"
-                />
-                <div className="flex justify-between text-[10px] text-zinc-600 mt-1">
-                  <span>0.5×</span><span>1.0×</span><span>2.0×</span>
-                </div>
+                <VoiceGrid selected={voice} onSelect={setVoice} />
               </div>
             </div>
 
-            {/* Right sidebar */}
-            <div className="space-y-4">
-              {/* Stats */}
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-                <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-zinc-400">📊 Platform</p>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { value: '54', label: 'Voices' },
-                    { value: '24kHz', label: 'Quality' },
-                    { value: '<200ms', label: 'First Chunk' },
-                  ].map(s => (
-                    <div key={s.label} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-center">
-                      <div className="font-mono text-lg font-extrabold text-violet-400">{s.value}</div>
-                      <div className="text-[10px] font-semibold uppercase text-zinc-500 mt-0.5">{s.label}</div>
-                    </div>
-                  ))}
+            {/* Settings Sidebar */}
+            <div className="space-y-5">
+              {/* Speed Slider Card */}
+              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sliders className="h-3.5 w-3.5 text-zinc-400" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Pacing Speed</span>
+                  </div>
+                  <span className="font-mono text-xs font-semibold text-zinc-200">{speed.toFixed(2)}x</span>
                 </div>
-              </div>
-
-              {/* Quick API */}
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-                <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-zinc-400">💻 Quick API</p>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 font-mono text-[11px] leading-relaxed text-blue-300 overflow-x-auto whitespace-pre">
-{`from gradio_client import Client
-import base64
-
-c = Client("adityax26/axiogenttspro")
-b64 = c.predict(
-  text="Hello!",
-  voice="af_bella",
-  speed=1.0,
-  api_name="/generate_gpu_b64"
-)`}
-                </div>
-              </div>
-
-              {/* API Key */}
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-                <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-zinc-400">🔑 API Key</p>
                 <input
-                  readOnly
-                  value="teamaxiogen_admin_master"
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-400"
+                  type="range"
+                  min={0.5}
+                  max={2.0}
+                  step={0.05}
+                  value={speed}
+                  onChange={e => setSpeed(parseFloat(e.target.value))}
+                  className="w-full accent-zinc-100 bg-zinc-800 h-1.5 rounded-lg appearance-none cursor-pointer"
                 />
+                <div className="flex justify-between text-[10px] font-mono text-zinc-500">
+                  <span>0.50x</span>
+                  <span>1.00x</span>
+                  <span>2.00x</span>
+                </div>
+              </div>
+
+              {/* Performance Metrics */}
+              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-5">
+                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 block mb-3">
+                  Engine Specifications
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5 text-center">
+                    <div className="font-mono text-base font-bold text-zinc-100">54</div>
+                    <div className="text-[10px] font-medium text-zinc-500 mt-0.5">Voices</div>
+                  </div>
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5 text-center">
+                    <div className="font-mono text-base font-bold text-zinc-100">24kHz</div>
+                    <div className="text-[10px] font-medium text-zinc-500 mt-0.5">Sample Rate</div>
+                  </div>
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5 text-center">
+                    <div className="font-mono text-base font-bold text-zinc-100">FP16</div>
+                    <div className="text-[10px] font-medium text-zinc-500 mt-0.5">Precision</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Master Authentication Token */}
+              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-5">
+                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 block mb-2">
+                  Active API Key
+                </span>
+                <div className="flex items-center rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+                  <span className="font-mono text-xs text-zinc-400">teamaxiogen_admin_master</span>
+                </div>
               </div>
             </div>
           </div>
         )}
 
+        {/* API Keys Tab */}
         {tab === 'keys' && <ApiKeysTab />}
+
+        {/* Documentation Tab */}
         {tab === 'docs' && <DocsTab />}
       </main>
     </div>
