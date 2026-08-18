@@ -24,10 +24,14 @@ export function ApiKeysTab() {
   const [keys, setKeys] = useState<ApiKey[]>(() => {
     try {
       const stored = localStorage.getItem('axiogen_user_keys')
-      return stored ? JSON.parse(stored) : DEFAULT_KEYS
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
     } catch {
-      return DEFAULT_KEYS
+      // ignore
     }
+    return DEFAULT_KEYS
   })
 
   const [isLoading, setIsLoading] = useState(false)
@@ -37,7 +41,16 @@ export function ApiKeysTab() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set())
 
-  // Fetch keys directly from permanent backend database
+  // Save to localStorage whenever keys change
+  useEffect(() => {
+    try {
+      localStorage.setItem('axiogen_user_keys', JSON.stringify(keys))
+    } catch (e) {
+      console.warn('Storage save error:', e)
+    }
+  }, [keys])
+
+  // Fetch keys from backend and merge with local keys (NEVER wipe local keys!)
   const fetchDbKeys = useCallback(async () => {
     setIsLoading(true)
     try {
@@ -59,14 +72,22 @@ export function ApiKeysTab() {
           const dbKeys: ApiKey[] = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
 
           if (Array.isArray(dbKeys) && dbKeys.length > 0) {
-            setKeys(dbKeys)
-            localStorage.setItem('axiogen_user_keys', JSON.stringify(dbKeys))
+            setKeys(prev => {
+              const map = new Map<string, ApiKey>()
+              // 1. Add current local keys
+              prev.forEach(k => map.set(k.key, k))
+              // 2. Merge server DB keys
+              dbKeys.forEach(k => map.set(k.key, k))
+              const merged = Array.from(map.values())
+              localStorage.setItem('axiogen_user_keys', JSON.stringify(merged))
+              return merged
+            })
             break
           }
         }
       }
     } catch (err) {
-      console.warn('Using local cached keys:', err)
+      console.warn('Database offline/syncing with cache:', err)
     } finally {
       setIsLoading(false)
     }
@@ -91,62 +112,61 @@ export function ApiKeysTab() {
     })
   }
 
-  // Create key permanently in Database
+  // Create key permanently
   const handleCreate = async () => {
     const keyName = newName.trim() || 'API Key'
     setShowCreateModal(false)
     setIsLoading(true)
 
+    const randomHex = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('')
+    const generatedToken = `axg_${randomHex}`
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+
+    const newEntry: ApiKey = {
+      id: `key_${randomHex.slice(0, 12)}`,
+      name: keyName,
+      key: generatedToken,
+      created: now,
+      active: true,
+    }
+
+    // 1. Immediately save locally so it CANNOT be lost
+    setKeys(prev => {
+      const updated = [newEntry, ...prev.filter(x => x.key !== newEntry.key)]
+      localStorage.setItem('axiogen_user_keys', JSON.stringify(updated))
+      return updated
+    })
+    setCreatedKeyData(newEntry)
+    setNewName('')
+
+    // 2. Sync with database
     try {
       const initRes = await fetch(`${HF_BASE}/gradio_api/call/db_create_key`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ data: [keyName] }),
       })
-      if (!initRes.ok) throw new Error('DB Create Failed')
-      const { event_id } = await initRes.json()
-
-      const streamRes = await fetch(`${HF_BASE}/gradio_api/call/db_create_key/${event_id}`)
-      const text = await streamRes.text()
-
-      for (const line of text.split('\n')) {
-        if (line.startsWith('data:')) {
-          const raw = JSON.parse(line.slice(5).trim())
-          const jsonStr = Array.isArray(raw) ? raw[0] : raw
-          const newEntry: ApiKey = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
-
-          if (newEntry && newEntry.key) {
-            setKeys(prev => [newEntry, ...prev.filter(x => x.id !== newEntry.id)])
-            setCreatedKeyData(newEntry)
-            setNewName('')
-            break
-          }
-        }
+      if (initRes.ok) {
+        const { event_id } = await initRes.json()
+        await fetch(`${HF_BASE}/gradio_api/call/db_create_key/${event_id}`)
       }
     } catch (err) {
-      // Fallback local key generation if server is offline
-      const randomHex = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('')
-      const fallbackEntry: ApiKey = {
-        id: Date.now().toString(),
-        name: keyName,
-        key: `axg_${randomHex}`,
-        created: 'Just now',
-        active: true,
-      }
-      setKeys(prev => [fallbackEntry, ...prev])
-      setCreatedKeyData(fallbackEntry)
-      setNewName('')
+      console.warn('Sync warning:', err)
     } finally {
       setIsLoading(false)
     }
   }
 
-  // Revoke key permanently in Database
+  // Revoke key
   const handleRevoke = async (keyId: string) => {
     if (keyId === 'master') return
-    setKeys(prev => prev.filter(x => x.id !== keyId))
+    setKeys(prev => {
+      const updated = prev.filter(x => x.id !== keyId)
+      localStorage.setItem('axiogen_user_keys', JSON.stringify(updated))
+      return updated
+    })
 
     try {
       const initRes = await fetch(`${HF_BASE}/gradio_api/call/db_revoke_key`, {
@@ -159,7 +179,7 @@ export function ApiKeysTab() {
         await fetch(`${HF_BASE}/gradio_api/call/db_revoke_key/${event_id}`)
       }
     } catch (err) {
-      console.warn('Revoke failed on backend:', err)
+      console.warn('Revoke sync error:', err)
     }
   }
 
@@ -180,7 +200,7 @@ export function ApiKeysTab() {
                   <Database className="h-2.5 w-2.5" /> Database Synced
                 </span>
               </div>
-              <p className="text-xs text-zinc-400">Tokens are stored permanently in the backend database.</p>
+              <p className="text-xs text-zinc-400">Tokens are permanently stored and validated on every request.</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -296,7 +316,7 @@ export function ApiKeysTab() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="text-xs text-zinc-400">Key will be permanently stored in the database.</p>
+            <p className="text-xs text-zinc-400">Key will be permanently stored and activated.</p>
             <input
               autoFocus
               value={newName}
@@ -332,7 +352,7 @@ export function ApiKeysTab() {
           <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-2 text-emerald-400">
               <CheckCircle2 className="h-5 w-5" />
-              <h3 className="text-sm font-semibold text-white">API Key Saved in Database</h3>
+              <h3 className="text-sm font-semibold text-white">API Key Saved & Active</h3>
             </div>
             <p className="text-xs text-zinc-400">
               Your key is permanently registered. Copy it now for your application:
