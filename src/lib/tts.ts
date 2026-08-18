@@ -55,12 +55,13 @@ export function splitSentences(text: string): string[] {
 export async function generateChunk(
   sentence: string,
   voice: string,
-  speed: number
+  speed: number,
+  apiKey: string = 'teamaxiogen_admin_master'
 ): Promise<string> {
   const r1 = await fetch(`${HF_BASE}/gradio_api/call/generate_gpu_b64`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data: [sentence, voice, speed] }),
+    body: JSON.stringify({ data: [sentence, voice, speed, apiKey] }),
   })
   if (!r1.ok) throw new Error(`Engine error (${r1.status})`)
   const { event_id } = await r1.json()
