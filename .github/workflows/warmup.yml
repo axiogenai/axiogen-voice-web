@@ -1,0 +1,40 @@
+name: Warmup HF Space GPU
+
+on:
+  schedule:
+    # Every 5 minutes — keeps ZeroGPU pod hot, zero cold starts
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # allow manual trigger from GitHub UI
+
+jobs:
+  warmup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Ping HF Space to keep GPU warm
+        run: |
+          echo "Sending warmup request to Axiogen Voice Pro HF Space..."
+
+          # Step 1: Submit TTS job
+          RESPONSE=$(curl -s -X POST \
+            "${{ secrets.VITE_HF_BASE || 'https://adityax26-axiogenttspro.hf.space' }}/gradio_api/call/generate_gpu_b64" \
+            -H "Content-Type: application/json" \
+            -d '{"data": ["Hi.", "af_bella", 1.0]}')
+
+          echo "Submit response: $RESPONSE"
+          EVENT_ID=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['event_id'])")
+          echo "Event ID: $EVENT_ID"
+
+          # Step 2: Fetch result (confirms GPU ran)
+          RESULT=$(curl -s \
+            "${{ secrets.VITE_HF_BASE || 'https://adityax26-axiogenttspro.hf.space' }}/gradio_api/call/generate_gpu_b64/$EVENT_ID")
+
+          # Check we got audio data back
+          if echo "$RESULT" | grep -q "data:"; then
+            echo "✅ GPU warmup SUCCESS — HF Space is hot and ready!"
+          else
+            echo "⚠️  Unexpected response:"
+            echo "$RESULT" | head -c 300
+            exit 1
+          fi
