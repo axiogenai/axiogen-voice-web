@@ -1,8 +1,8 @@
 // Axiogen Voice Pro — TTS API client
 // Production 54-Voice Neural Speech Engine
 
-export const API_BASE = 'https://voice.axiogen.in/api'
-export const HF_BASE = API_BASE
+export const HF_BASE = 'https://adityax26-axiogenttspro.hf.space'
+export const API_BASE = 'https://adityax26-axiogenttspro.hf.space'
 
 export interface Voice {
   id: string
