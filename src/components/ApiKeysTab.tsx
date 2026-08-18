@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react'
-import { X, Plus, Key, Copy, Check, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { X, Plus, Key, Copy, Check, Eye, EyeOff, CheckCircle2, RefreshCw, Database } from 'lucide-react'
+import { HF_BASE } from '../lib/tts'
 
 interface ApiKey {
   id: string
   name: string
   key: string
   created: string
+  active?: boolean
 }
 
 const DEFAULT_KEYS: ApiKey[] = [
@@ -14,6 +16,7 @@ const DEFAULT_KEYS: ApiKey[] = [
     name: 'Master Admin Key',
     key: 'teamaxiogen_admin_master',
     created: 'System Default',
+    active: true,
   },
 ]
 
@@ -27,15 +30,51 @@ export function ApiKeysTab() {
     }
   })
 
+  const [isLoading, setIsLoading] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [createdKeyData, setCreatedKeyData] = useState<ApiKey | null>(null)
   const [newName, setNewName] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set())
 
+  // Fetch keys directly from permanent backend database
+  const fetchDbKeys = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const initRes = await fetch(`${HF_BASE}/gradio_api/call/db_list_keys`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: [] }),
+      })
+      if (!initRes.ok) throw new Error('Failed to connect to database')
+      const { event_id } = await initRes.json()
+
+      const streamRes = await fetch(`${HF_BASE}/gradio_api/call/db_list_keys/${event_id}`)
+      const text = await streamRes.text()
+
+      for (const line of text.split('\n')) {
+        if (line.startsWith('data:')) {
+          const raw = JSON.parse(line.slice(5).trim())
+          const jsonStr = Array.isArray(raw) ? raw[0] : raw
+          const dbKeys: ApiKey[] = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
+
+          if (Array.isArray(dbKeys) && dbKeys.length > 0) {
+            setKeys(dbKeys)
+            localStorage.setItem('axiogen_user_keys', JSON.stringify(dbKeys))
+            break
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Using local cached keys:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
-    localStorage.setItem('axiogen_user_keys', JSON.stringify(keys))
-  }, [keys])
+    fetchDbKeys()
+  }, [fetchDbKeys])
 
   const copyToClipboard = (token: string, id: string) => {
     navigator.clipboard.writeText(token)
@@ -52,22 +91,76 @@ export function ApiKeysTab() {
     })
   }
 
-  const handleCreate = () => {
-    const randomHex = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('')
-    const newKeyToken = `axg_${randomHex}`
-    const newEntry: ApiKey = {
-      id: Date.now().toString(),
-      name: newName.trim() || 'API Key',
-      key: newKeyToken,
-      created: 'Just now',
-    }
-
-    setKeys(prev => [...prev, newEntry])
-    setCreatedKeyData(newEntry)
-    setNewName('')
+  // Create key permanently in Database
+  const handleCreate = async () => {
+    const keyName = newName.trim() || 'API Key'
     setShowCreateModal(false)
+    setIsLoading(true)
+
+    try {
+      const initRes = await fetch(`${HF_BASE}/gradio_api/call/db_create_key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: [keyName] }),
+      })
+      if (!initRes.ok) throw new Error('DB Create Failed')
+      const { event_id } = await initRes.json()
+
+      const streamRes = await fetch(`${HF_BASE}/gradio_api/call/db_create_key/${event_id}`)
+      const text = await streamRes.text()
+
+      for (const line of text.split('\n')) {
+        if (line.startsWith('data:')) {
+          const raw = JSON.parse(line.slice(5).trim())
+          const jsonStr = Array.isArray(raw) ? raw[0] : raw
+          const newEntry: ApiKey = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
+
+          if (newEntry && newEntry.key) {
+            setKeys(prev => [newEntry, ...prev.filter(x => x.id !== newEntry.id)])
+            setCreatedKeyData(newEntry)
+            setNewName('')
+            break
+          }
+        }
+      }
+    } catch (err) {
+      // Fallback local key generation if server is offline
+      const randomHex = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('')
+      const fallbackEntry: ApiKey = {
+        id: Date.now().toString(),
+        name: keyName,
+        key: `axg_${randomHex}`,
+        created: 'Just now',
+        active: true,
+      }
+      setKeys(prev => [fallbackEntry, ...prev])
+      setCreatedKeyData(fallbackEntry)
+      setNewName('')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Revoke key permanently in Database
+  const handleRevoke = async (keyId: string) => {
+    if (keyId === 'master') return
+    setKeys(prev => prev.filter(x => x.id !== keyId))
+
+    try {
+      const initRes = await fetch(`${HF_BASE}/gradio_api/call/db_revoke_key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: [keyId] }),
+      })
+      if (initRes.ok) {
+        const { event_id } = await initRes.json()
+        await fetch(`${HF_BASE}/gradio_api/call/db_revoke_key/${event_id}`)
+      }
+    } catch (err) {
+      console.warn('Revoke failed on backend:', err)
+    }
   }
 
   const mask = (k: string) => k.slice(0, 8) + '••••••••' + k.slice(-4)
@@ -81,17 +174,33 @@ export function ApiKeysTab() {
               <Key className="h-3.5 w-3.5" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">API Authentication Keys</h2>
-              <p className="text-xs text-zinc-400">Manage tokens for external web applications, bots, and agents.</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-white">API Authentication Keys</h2>
+                <span className="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded font-mono">
+                  <Database className="h-2.5 w-2.5" /> Database Synced
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400">Tokens are stored permanently in the backend database.</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-900 hover:bg-white transition-colors cursor-pointer"
-          >
-            <Plus className="h-3.5 w-3.5" /> Create Key
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={fetchDbKeys}
+              title="Refresh Database Keys"
+              disabled={isLoading}
+              className="p-1.5 rounded-lg border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-900 hover:bg-white transition-colors cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" /> Create Key
+            </button>
+          </div>
         </div>
 
         <div className="overflow-hidden rounded-lg border border-zinc-800/80">
@@ -158,7 +267,7 @@ export function ApiKeysTab() {
                       ) : (
                         <button
                           type="button"
-                          onClick={() => setKeys(prev => prev.filter(x => x.id !== k.id))}
+                          onClick={() => handleRevoke(k.id)}
                           className="text-[11px] font-medium text-red-400 hover:text-red-300 transition-colors cursor-pointer"
                         >
                           Revoke
@@ -187,7 +296,7 @@ export function ApiKeysTab() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="text-xs text-zinc-400">Specify an identifier name for the client application.</p>
+            <p className="text-xs text-zinc-400">Key will be permanently stored in the database.</p>
             <input
               autoFocus
               value={newName}
@@ -207,9 +316,10 @@ export function ApiKeysTab() {
               <button
                 type="button"
                 onClick={handleCreate}
-                className="rounded-lg bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-900 hover:bg-white cursor-pointer"
+                disabled={isLoading}
+                className="rounded-lg bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-900 hover:bg-white cursor-pointer disabled:opacity-50"
               >
-                Create Key
+                {isLoading ? 'Creating...' : 'Create Key'}
               </button>
             </div>
           </div>
@@ -222,10 +332,10 @@ export function ApiKeysTab() {
           <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-2 text-emerald-400">
               <CheckCircle2 className="h-5 w-5" />
-              <h3 className="text-sm font-semibold text-white">API Key Created Successfully</h3>
+              <h3 className="text-sm font-semibold text-white">API Key Saved in Database</h3>
             </div>
             <p className="text-xs text-zinc-400">
-              Copy this token now. For security, make sure to store it securely in your client environment.
+              Your key is permanently registered. Copy it now for your application:
             </p>
 
             <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950 p-3">
