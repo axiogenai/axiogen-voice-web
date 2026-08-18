@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { generateChunk, b64toArrayBuffer } from '../lib/tts'
 import { Wave } from './Wave'
+import { Volume2, CheckCircle2, AlertCircle } from 'lucide-react'
 
 interface PlayerProps {
   voice: string
@@ -11,11 +12,10 @@ type Status = 'idle' | 'generating' | 'done' | 'error'
 
 export function Player({ voice, speed }: PlayerProps) {
   const [text, setText] = useState(
-    'Hello! Welcome to Axiogen Voice Pro.\n\nOur voice engine provides ultra-realistic neural speech with zero repetition and crystal-clear 24kHz quality.'
+    'Hello! Welcome to Axiogen Voice Pro.\n\nOur voice engine provides ultra-realistic neural speech synthesis powered by high-performance GPU acceleration.'
   )
   const [status, setStatus] = useState<Status>('idle')
   const [statusMsg, setStatusMsg] = useState('')
-  const [metaMsg, setMetaMsg] = useState('')
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [latencyMs, setLatencyMs] = useState<number | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -26,17 +26,15 @@ export function Player({ voice, speed }: PlayerProps) {
     if (!trimmed) return
 
     setStatus('generating')
-    setStatusMsg('Synthesizing on Nvidia RTX 6000...')
-    setMetaMsg('Computing...')
+    setStatusMsg('Synthesizing speech...')
     setAudioUrl(null)
     setLatencyMs(null)
 
     const t0 = performance.now()
 
     try {
-      // 1 Clean Single Request — NO sentence duplication or overlapping loops!
       const b64 = await generateChunk(trimmed, voice, speed)
-      if (!b64) throw new Error('No audio returned from engine')
+      if (!b64) throw new Error('Failed to retrieve audio stream')
 
       const totalMs = Math.round(performance.now() - t0)
       setLatencyMs(totalMs)
@@ -47,10 +45,8 @@ export function Player({ voice, speed }: PlayerProps) {
       setAudioUrl(url)
 
       setStatus('done')
-      setStatusMsg('Speech Ready!')
-      setMetaMsg(`⚡ ${(totalMs / 1000).toFixed(2)}s`)
+      setStatusMsg('Synthesis complete')
 
-      // Autoplay immediately
       setTimeout(() => {
         if (audioRef.current) {
           audioRef.current.play().catch(() => {})
@@ -59,7 +55,7 @@ export function Player({ voice, speed }: PlayerProps) {
 
     } catch (err: any) {
       setStatus('error')
-      setStatusMsg(err.message ?? 'Generation failed')
+      setStatusMsg(err.message ?? 'Synthesis failed')
     }
   }, [text, voice, speed, status])
 
@@ -67,71 +63,71 @@ export function Player({ voice, speed }: PlayerProps) {
 
   return (
     <div className="space-y-4">
-      {/* Textarea */}
+      {/* Input container */}
       <div className="relative">
         <textarea
           value={text}
           onChange={e => setText(e.target.value)}
           maxLength={5000}
           rows={5}
-          placeholder="Type or paste any text to synthesize..."
-          className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 leading-relaxed
-            resize-y outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 transition-all"
+          placeholder="Enter text to synthesize into speech..."
+          className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 leading-relaxed resize-y outline-none focus:border-zinc-600 focus:bg-zinc-900 transition-all font-normal"
         />
-        <span className="absolute bottom-3 right-3 text-[11px] text-zinc-600 font-mono">
-          {text.length} / 5000
-        </span>
+        <div className="flex justify-end pt-1">
+          <span className="text-[11px] font-mono text-zinc-500">
+            {text.length} / 5000
+          </span>
+        </div>
       </div>
 
-      {/* Generate button */}
+      {/* Action Button */}
       <button
+        type="button"
         onClick={generate}
         disabled={isGenerating}
-        className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-500
-          px-6 py-4 text-base font-extrabold text-white tracking-tight
-          shadow-[0_4px_18px_rgba(139,92,246,0.4)]
-          hover:shadow-[0_6px_24px_rgba(139,92,246,0.6)] hover:-translate-y-0.5
-          disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
-          transition-all duration-200 cursor-pointer"
+        className="w-full flex items-center justify-center gap-2 rounded-lg bg-zinc-100 px-5 py-3 text-sm font-semibold text-zinc-900 hover:bg-white active:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 shadow-sm cursor-pointer"
       >
         {isGenerating ? (
-          <span className="flex items-center justify-center gap-2">
-            <Wave /> Synthesizing Speech...
-          </span>
+          <>
+            <Wave />
+            <span>Generating Audio...</span>
+          </>
         ) : (
-          '⚡ Generate Speech'
+          <>
+            <Volume2 className="w-4 h-4 text-zinc-800" />
+            <span>Generate Speech</span>
+          </>
         )}
       </button>
 
-      {/* Player panel */}
+      {/* Audio Playback & Diagnostics Panel */}
       {status !== 'idle' && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 space-y-3">
-          {/* Status row */}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-bold text-violet-400">
+            <div className="flex items-center gap-2 text-xs font-medium">
               {isGenerating && <Wave />}
-              {status === 'done' && '✅'}
-              {status === 'error' && '❌'}
-              <span>{statusMsg}</span>
+              {status === 'done' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+              {status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-400" />}
+              <span className={status === 'error' ? 'text-red-400' : 'text-zinc-300'}>
+                {statusMsg}
+              </span>
             </div>
-            <span className="font-mono text-xs font-bold text-emerald-400">{metaMsg}</span>
+            {latencyMs !== null && (
+              <span className="font-mono text-xs font-medium text-zinc-400">
+                {latencyMs}ms latency
+              </span>
+            )}
           </div>
 
-          {/* Latency badge */}
-          {latencyMs !== null && (
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 text-xs font-bold text-emerald-400">
-              ⚡ Rendered in {latencyMs}ms on RTX 6000
-            </div>
-          )}
-
-          {/* Clean HTML5 Audio Player */}
           {audioUrl && (
-            <audio
-              ref={audioRef}
-              controls
-              src={audioUrl}
-              className="w-full h-10 mt-1"
-            />
+            <div className="pt-1">
+              <audio
+                ref={audioRef}
+                controls
+                src={audioUrl}
+                className="w-full h-9 rounded"
+              />
+            </div>
           )}
         </div>
       )}
