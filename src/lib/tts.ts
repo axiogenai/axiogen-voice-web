@@ -1,8 +1,8 @@
 // Axiogen Voice Pro — TTS API client
 // Production 54-Voice Neural Speech Engine
 
-export const HF_BASE = 'https://adityax26-axiogenttspro.hf.space'
-export const API_BASE = 'https://adityax26-axiogenttspro.hf.space'
+export const API_BASE = '/api'
+export const HF_BASE = '/api'
 
 export interface Voice {
   id: string
@@ -121,26 +121,26 @@ export async function generateChunk(
   speed: number,
   apiKey: string = 'teamaxiogen_admin_master'
 ): Promise<string> {
-  const r1 = await fetch(`${HF_BASE}/gradio_api/call/generate_gpu_b64`, {
+  const res = await fetch(`${API_BASE}/v1/audio/speech`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data: [sentence, voice, speed, apiKey] }),
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey.trim()}`
+    },
+    body: JSON.stringify({ input: sentence, voice, speed })
   })
-  if (!r1.ok) throw new Error(`Engine error (${r1.status})`)
-  const { event_id } = await r1.json()
-
-  const r2 = await fetch(`${HF_BASE}/gradio_api/call/generate_gpu_b64/${event_id}`)
-  const text = await r2.text()
-  for (const line of text.split('\n')) {
-    if (line.startsWith('data:')) {
-      try {
-        const parsed = JSON.parse(line.slice(5).trim())
-        const v = Array.isArray(parsed) ? parsed[0] : parsed
-        if (v && typeof v === 'string' && v.length > 10) return v
-      } catch { /* skip */ }
+  if (!res.ok) throw new Error(`Engine error (${res.status})`)
+  const blob = await res.blob()
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const resStr = reader.result as string
+      const b64 = resStr.includes(',') ? resStr.split(',')[1] : resStr
+      resolve(b64)
     }
-  }
-  throw new Error('No audio data received')
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
 }
 
 // base64 → ArrayBuffer
