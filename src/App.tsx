@@ -3,7 +3,7 @@ import { Player } from './components/Player'
 import { VoiceGrid } from './components/VoiceGrid'
 import { ApiKeysTab } from './components/ApiKeysTab'
 import { DocsTab } from './components/DocsTab'
-import { Sliders, Activity, Key, BookOpen, Mic, ShieldCheck } from 'lucide-react'
+import { Sliders, Activity, Key, BookOpen, Mic, ShieldCheck, Menu, X } from 'lucide-react'
 
 type Tab = 'studio' | 'keys' | 'docs'
 
@@ -11,6 +11,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('studio')
   const [voice, setVoice] = useState('af_bella')
   const [speed, setSpeed] = useState(1.0)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [apiKey, setApiKey] = useState<string>(() => {
     return localStorage.getItem('axiogen_api_key') || 'teamaxiogen_admin_master'
   })
@@ -29,8 +30,8 @@ export default function App() {
     <div className="min-h-screen bg-[#09090b] text-zinc-100 antialiased selection:bg-zinc-800 selection:text-white">
 
       {/* Clean Enterprise Header */}
-      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-zinc-800/80 bg-[#09090b]/90 px-6 backdrop-blur-md">
-        <div className="flex items-center gap-3">
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-zinc-800/80 bg-[#09090b]/90 px-3 sm:px-6 backdrop-blur-md">
+        <div className="flex items-center gap-2 sm:gap-3">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-zinc-800 border border-zinc-700 text-zinc-200">
             <Activity className="h-3.5 w-3.5" />
           </div>
@@ -40,8 +41,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* Tab Selector */}
-        <nav className="flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900/60 p-1">
+        {/* Desktop Tab Selector */}
+        <nav className="hidden md:flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900/60 p-1">
           {navItems.map(n => {
             const Icon = n.icon
             const active = tab === n.id
@@ -63,33 +64,74 @@ export default function App() {
           })}
         </nav>
 
-        {/* Status indicator */}
-        <div className="flex items-center gap-3 text-xs font-medium">
-          <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 text-[11px] text-emerald-400 font-medium">
+        {/* Status indicator (desktop) + Mobile menu button */}
+        <div className="flex items-center gap-2 sm:gap-3 text-xs font-medium">
+          <div className="hidden sm:flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 text-[11px] text-emerald-400 font-medium">
             <ShieldCheck className="h-3 w-3" />
             <span>Strict Auth</span>
           </div>
-          <div className="flex items-center gap-2 text-zinc-400">
+          <div className="hidden sm:flex items-center gap-2 text-zinc-400">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <span className="text-[11px] font-mono text-zinc-400">RTX 6000 Active</span>
+            <span className="text-[11px] font-mono text-zinc-400">Ampere A1 Active</span>
           </div>
+
+          {/* Mobile hamburger */}
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden flex items-center justify-center h-8 w-8 rounded-md border border-zinc-700 bg-zinc-800 text-zinc-300"
+          >
+            {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+          </button>
         </div>
       </header>
 
+      {/* Mobile Navigation Dropdown */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-b border-zinc-800 bg-zinc-900/95 backdrop-blur-md px-4 py-3 space-y-1 z-30">
+          {navItems.map(n => {
+            const Icon = n.icon
+            const active = tab === n.id
+            return (
+              <button
+                key={n.id}
+                type="button"
+                onClick={() => { setTab(n.id); setMobileMenuOpen(false) }}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all cursor-pointer
+                  ${active
+                    ? 'bg-zinc-800 text-white'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                  }`}
+              >
+                <Icon className="h-4 w-4 opacity-70" />
+                <span>{n.label}</span>
+              </button>
+            )
+          })}
+          <div className="flex items-center gap-2 pt-2 border-t border-zinc-800 mt-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-[11px] font-mono text-emerald-400">Ampere A1 · 4 OCPU · 24GB</span>
+          </div>
+        </div>
+      )}
+
       {/* Main Container */}
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      <main className="mx-auto max-w-6xl px-3 sm:px-6 py-4 sm:py-8">
 
         {/* Playground Tab */}
         {tab === 'studio' && (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
+          <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-[1fr_340px]">
 
             {/* Main Area */}
-            <div className="space-y-5">
+            <div className="space-y-4 sm:space-y-5">
               {/* Input Card */}
-              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-5">
+              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                     Input Text
@@ -100,7 +142,7 @@ export default function App() {
               </div>
 
               {/* Voice Selection */}
-              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-5">
+              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                     Voice Model
@@ -112,9 +154,9 @@ export default function App() {
             </div>
 
             {/* Settings Sidebar */}
-            <div className="space-y-5">
+            <div className="space-y-4 sm:space-y-5">
               {/* Speed Slider Card */}
-              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-5 space-y-3">
+              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-4 sm:p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Sliders className="h-3.5 w-3.5 text-zinc-400" />
@@ -139,7 +181,7 @@ export default function App() {
               </div>
 
               {/* Master Authentication Token */}
-              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-5 space-y-2">
+              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-4 sm:p-5 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 block">
                     Active API Key
@@ -161,7 +203,7 @@ export default function App() {
               </div>
 
               {/* Performance Metrics */}
-              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-5">
+              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-4 sm:p-5">
                 <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 block mb-3">
                   Engine Specifications
                 </span>
