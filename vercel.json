@@ -12,7 +12,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://adityax26-axiogenttspro.hf.space/$1"
+      "destination": "http://137.23.47.137/$1"
     },
     {
       "source": "/(.*)",
