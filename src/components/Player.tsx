@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import { HF_BASE, b64toArrayBuffer, mergeWAVs } from '../lib/tts'
+import { API_BASE, b64toArrayBuffer, mergeWAVs } from '../lib/tts'
 import { Wave } from './Wave'
 import { Volume2, CheckCircle2, Zap, ShieldAlert } from 'lucide-react'
 
@@ -63,18 +63,25 @@ export function Player({ voice, speed, apiKey }: PlayerProps) {
     const processedIndices = new Set<number>()
 
     try {
-      // 1. INITIATE STREAM VIA GRADIO SSE ENDPOINT WITH STRICT AUTH KEY
-      const initRes = await fetch(`${HF_BASE}/gradio_api/call/stream_tts`, {
+      // 1. INITIATE DIRECT SSE STREAM TO DEDICATED FASTAPI BACKEND
+      const streamRes = await fetch(`${API_BASE}/v1/tts/stream`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: [trimmed, voice, speed, apiKey.trim()] })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey.trim()}`
+        },
+        body: JSON.stringify({ input: trimmed, voice, speed })
       })
 
-      if (!initRes.ok) throw new Error(`Authentication/Server error (${initRes.status})`)
-      const { event_id } = await initRes.json()
+      if (!streamRes.ok) {
+        let errText = `Server error (${streamRes.status})`
+        try {
+          const errData = await streamRes.json()
+          if (errData.detail) errText = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail)
+        } catch { /* ignore */ }
+        throw new Error(errText)
+      }
 
-      // 2. READ SSE CHUNK STREAM USING GETREADER()
-      const streamRes = await fetch(`${HF_BASE}/gradio_api/call/stream_tts/${event_id}`)
       if (!streamRes.body) throw new Error('Readable stream not supported')
 
       const reader = streamRes.body.getReader()
@@ -91,24 +98,23 @@ export function Player({ voice, speed, apiKey }: PlayerProps) {
 
         for (const line of lines) {
           if (line.startsWith('data:')) {
-            try {
-              const raw = JSON.parse(line.slice(5).trim())
-              const jsonStr = Array.isArray(raw) ? raw[0] : raw
-              const payload = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
+            const rawText = line.slice(5).trim()
+            if (rawText === '[DONE]') continue
 
-              // Check if backend returned authentication error
+            try {
+              const payload = JSON.parse(rawText)
+
               if (payload && payload.error) {
                 throw new Error(payload.error)
               }
 
-              // CRITICAL: DEDUPLICATE CHUNKS BY INDEX (Gradio SSE sends generating + complete duplicate)
               if (payload && payload.audio && typeof payload.index === 'number') {
                 if (processedIndices.has(payload.index)) {
                   continue
                 }
                 processedIndices.add(payload.index)
 
-                setStatusMsg(`Streaming chunk ${payload.index + 1}: "${payload.text.slice(0, 30)}..."`)
+                setStatusMsg(`Streaming chunk ${payload.index + 1}: "${(payload.text || '').slice(0, 30)}..."`)
 
                 const ab = b64toArrayBuffer(payload.audio)
                 allBuffers.push(ab)
@@ -133,7 +139,7 @@ export function Player({ voice, speed, apiKey }: PlayerProps) {
                 nextStartTime += audioBuffer.duration
               }
             } catch (e: any) {
-              if (e.message && e.message.includes('Unauthorized')) {
+              if (e.message && (e.message.includes('Unauthorized') || e.message.includes('error'))) {
                 throw e
               }
             }
@@ -175,7 +181,7 @@ export function Player({ voice, speed, apiKey }: PlayerProps) {
         <div className="flex justify-between items-center pt-1">
           <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
             <Zap className="w-3 h-3 text-violet-400" />
-            <span>Strict Auth · Instant first-chunk streaming</span>
+            <span>Dedicated 4-Core ARM Engine · Instant first-chunk streaming</span>
           </div>
           <span className="text-[11px] font-mono text-zinc-500">
             {text.length} / 5000
