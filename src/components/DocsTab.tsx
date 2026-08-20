@@ -3,49 +3,47 @@ import { CodeBlock } from './CodeBlock'
 import { VOICES } from '../lib/tts'
 import { Terminal, Code2, Globe, Sparkles, Shield, Cpu, Layers, Server, KeyRound, AlertTriangle, FileCode } from 'lucide-react'
 
-// --- Code Examples Branded with voice.axiogen.in ---
+// --- Code Examples Branded with api.axiogen.in ---
 
 const REACT_HOOK_CODE = `// useAxiogenTTS.ts — Drop-in React / Next.js Hook
 import { useState, useRef, useCallback } from 'react';
 
-const API_BASE = 'https://voice.axiogen.in/api';
+const API_BASE = 'https://api.axiogen.in';
 
 export function useAxiogenTTS() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const speak = useCallback(async (text: string, voice = 'af_bella', speed = 1.0, apiKey = 'YOUR_API_KEY') => {
+  const speak = useCallback(async (
+    text: string,
+    voice = 'af_bella',
+    speed = 1.0,
+    apiKey = 'YOUR_API_KEY'
+  ) => {
     if (!text.trim()) return;
     setIsSpeaking(true);
     setError(null);
 
     try {
-      // 1. Submit synthesis task to Axiogen API Gateway
-      const initRes = await fetch(\`\${API_BASE}/gradio_api/call/generate_gpu_b64\`, {
+      const res = await fetch(\`\${API_BASE}/v1/audio/speech\`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: [text, voice, speed, apiKey] })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': \`Bearer \${apiKey}\`
+        },
+        body: JSON.stringify({ input: text, voice, speed })
       });
-      if (!initRes.ok) throw new Error(\`Engine error (\${initRes.status})\`);
-      const { event_id } = await initRes.json();
 
-      // 2. Stream base64 audio payload
-      const streamRes = await fetch(\`\${API_BASE}/gradio_api/call/generate_gpu_b64/\${event_id}\`);
-      const streamText = await streamRes.text();
+      if (!res.ok) throw new Error(\`Engine error (\${res.status})\`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
 
-      for (const line of streamText.split('\\n')) {
-        if (line.startsWith('data:')) {
-          const [base64Wav] = JSON.parse(line.slice(5));
-          if (audioRef.current) audioRef.current.pause();
-
-          const audio = new Audio(\`data:audio/wav;base64,\${base64Wav}\`);
-          audioRef.current = audio;
-          audio.onended = () => setIsSpeaking(false);
-          await audio.play();
-          return;
-        }
-      }
+      if (audioRef.current) audioRef.current.pause();
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => { setIsSpeaking(false); URL.revokeObjectURL(url); };
+      await audio.play();
     } catch (err: any) {
       setError(err.message || 'Speech generation failed');
       setIsSpeaking(false);
@@ -63,23 +61,28 @@ export function useAxiogenTTS() {
 }`
 
 const JS_STREAMING_CODE = `// Real-Time SSE Chunk-by-Chunk Streaming (Web Audio API)
-async function streamSpeechLive(text, voice = 'af_bella', speed = 1.0, apiKey = 'YOUR_API_KEY') {
-  const API_BASE = 'https://voice.axiogen.in/api';
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-  let nextStartTime = audioCtx.currentTime + 0.05;
-  const processed = new Set();
-
-  // 1. Initiate Streaming Connection
-  const init = await fetch(\`\${API_BASE}/gradio_api/call/stream_tts\`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data: [text, voice, speed, apiKey] })
+async function streamSpeechLive(
+  text,
+  voice = 'af_bella',
+  speed = 1.0,
+  apiKey = 'YOUR_API_KEY'
+) {
+  const API_BASE = 'https://api.axiogen.in';
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+    sampleRate: 24000
   });
-  const { event_id } = await init.json();
+  let nextStartTime = audioCtx.currentTime + 0.05;
 
-  // 2. Read SSE Chunks as they arrive
-  const stream = await fetch(\`\${API_BASE}/gradio_api/call/stream_tts/\${event_id}\`);
-  const reader = stream.body.getReader();
+  const res = await fetch(\`\${API_BASE}/v1/tts/stream\`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': \`Bearer \${apiKey}\`
+    },
+    body: JSON.stringify({ input: text, voice, speed })
+  });
+
+  const reader = res.body.getReader();
   const decoder = new TextDecoder('utf-8');
   let buf = '';
 
@@ -91,15 +94,13 @@ async function streamSpeechLive(text, voice = 'af_bella', speed = 1.0, apiKey = 
     buf = lines.pop() ?? '';
 
     for (const line of lines) {
-      if (line.startsWith('data:')) {
-        const raw = JSON.parse(line.slice(5).trim());
-        const chunk = typeof raw[0] === 'string' ? JSON.parse(raw[0]) : raw[0];
+      if (line.startsWith('data:') && !line.includes('[DONE]')) {
+        const chunk = JSON.parse(line.slice(5).trim());
 
-        if (chunk?.audio && !processed.has(chunk.index)) {
-          processed.add(chunk.index);
-          console.log(\`Received chunk \${chunk.index}: "\${chunk.text}" (\${chunk.duration}s)\`);
+        if (chunk?.audio) {
+          console.log(\`Chunk \${chunk.index}: "\${chunk.text}" (\${chunk.duration}s)\`);
 
-          // Decode base64 to AudioBuffer and play immediately
+          // Decode base64 WAV and play immediately
           const binary = atob(chunk.audio);
           const bytes = new Uint8Array(binary.length);
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -109,7 +110,9 @@ async function streamSpeechLive(text, voice = 'af_bella', speed = 1.0, apiKey = 
           source.buffer = audioBuffer;
           source.connect(audioCtx.destination);
 
-          if (nextStartTime < audioCtx.currentTime) nextStartTime = audioCtx.currentTime + 0.02;
+          if (nextStartTime < audioCtx.currentTime) {
+            nextStartTime = audioCtx.currentTime + 0.02;
+          }
           source.start(nextStartTime);
           nextStartTime += audioBuffer.duration;
         }
@@ -118,111 +121,112 @@ async function streamSpeechLive(text, voice = 'af_bella', speed = 1.0, apiKey = 
   }
 }`
 
-const NODE_BACKEND_CODE = `// Node.js (CommonJS / ESM) — Generate and save .wav file
+const NODE_BACKEND_CODE = `// Node.js — Generate and save .wav file via Axiogen REST API
 const fs = require('fs');
 
-async function synthesizeToFile(text, outputFile = 'output.wav', apiKey = 'YOUR_API_KEY') {
-  const API_BASE = 'https://voice.axiogen.in/api';
-
-  const initRes = await fetch(\`\${API_BASE}/gradio_api/call/generate_gpu_b64\`, {
+async function synthesizeToFile(
+  text,
+  outputFile = 'output.wav',
+  apiKey = 'YOUR_API_KEY'
+) {
+  const res = await fetch('https://api.axiogen.in/v1/audio/speech', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data: [text, 'af_bella', 1.0, apiKey] })
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': \`Bearer \${apiKey}\`
+    },
+    body: JSON.stringify({
+      input: text,
+      voice: 'af_bella',
+      speed: 1.0
+    })
   });
 
-  const { event_id } = await initRes.json();
-  const streamRes = await fetch(\`\${API_BASE}/gradio_api/call/generate_gpu_b64/\${event_id}\`);
-  const textStream = await streamRes.text();
+  if (!res.ok) throw new Error(\`Error: \${res.status}\`);
 
-  for (const line of textStream.split('\\n')) {
-    if (line.startsWith('data:')) {
-      const [base64Wav] = JSON.parse(line.slice(5));
-      const buffer = Buffer.from(base64Wav, 'base64');
-      fs.writeFileSync(outputFile, buffer);
-      console.log(\`Audio saved successfully to \${outputFile}\`);
-      return;
-    }
-  }
+  const buffer = Buffer.from(await res.arrayBuffer());
+  fs.writeFileSync(outputFile, buffer);
+  console.log(\`Audio saved -> \${outputFile} (\${buffer.length} bytes)\`);
 }
 
 synthesizeToFile("Welcome to Axiogen Voice Pro Enterprise.");`
 
-const PYTHON_REQUESTS_CODE = `# Python — Pure requests without dependencies
-import requests, json, base64
+const PYTHON_REQUESTS_CODE = `# Python — Direct REST API synthesis
+import requests
 
-API_BASE = "https://voice.axiogen.in/api"
+API_BASE = "https://api.axiogen.in"
 API_KEY = "YOUR_API_KEY"
 
-def synthesize_speech(text, voice="af_bella", speed=1.0, output_path="speech.wav"):
-    # 1. Post generation task to Axiogen API Gateway
-    res1 = requests.post(
-        f"{API_BASE}/gradio_api/call/generate_gpu_b64",
-        json={"data": [text, voice, speed, API_KEY]}
+def synthesize_speech(text, voice="af_bella", speed=1.0, output="speech.wav"):
+    res = requests.post(
+        f"{API_BASE}/v1/audio/speech",
+        json={"input": text, "voice": voice, "speed": speed},
+        headers={"Authorization": f"Bearer {API_KEY}"}
     )
-    event_id = res1.json()["event_id"]
+    res.raise_for_status()
 
-    # 2. Get synthesized WAV
-    res2 = requests.get(f"{API_BASE}/gradio_api/call/generate_gpu_b64/{event_id}")
-    for line in res2.text.splitlines():
-        if line.startswith("data:"):
-            b64_audio = json.loads(line[5:])[0]
-            with open(output_path, "wb") as f:
-                f.write(base64.b64decode(b64_audio))
-            print(f"Saved audio -> {output_path}")
-            return
+    with open(output, "wb") as f:
+        f.write(res.content)
+    print(f"Saved audio -> {output} ({len(res.content)} bytes)")
 
 synthesize_speech("High quality neural text to speech engine.")`
 
-const CURL_SNIPPET = `# Step 1: Submit synthesis job to voice.axiogen.in
-curl -X POST https://voice.axiogen.in/api/gradio_api/call/generate_gpu_b64 \\
+const CURL_SNIPPET = `# Direct WAV synthesis (OpenAI-compatible endpoint)
+curl -X POST https://api.axiogen.in/v1/audio/speech \\
   -H "Content-Type: application/json" \\
-  -d '{"data": ["Hello world from cURL", "af_bella", 1.0, "YOUR_API_KEY"]}'
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -d '{"input": "Hello world from cURL", "voice": "af_bella", "speed": 1.0}' \\
+  --output speech.wav
 
-# Response: {"event_id": "xxx"}
+# SSE Streaming (sentence-by-sentence, real-time)
+curl -N -X POST https://api.axiogen.in/v1/tts/stream \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -d '{"input": "Hello! Welcome to Axiogen Voice.", "voice": "af_bella", "speed": 1.0}'
 
-# Step 2: Fetch result WAV stream
-curl -N https://voice.axiogen.in/api/gradio_api/call/generate_gpu_b64/<event_id>`
+# List available voices
+curl https://api.axiogen.in/v1/voices \\
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+# Health check
+curl https://api.axiogen.in/health`
 
 const GO_CODE = `package main
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"strings"
 )
 
 func main() {
-	apiBase := "https://voice.axiogen.in/api"
+	apiBase := "https://api.axiogen.in"
 	apiKey := "YOUR_API_KEY"
 	text := "Speech synthesis via Golang"
 
-	// 1. Submit task
 	payload, _ := json.Marshal(map[string]interface{}{
-		"data": []interface{}{text, "af_bella", 1.0, apiKey},
+		"input": text,
+		"voice": "af_bella",
+		"speed": 1.0,
 	})
-	resp, _ := http.Post(apiBase+"/gradio_api/call/generate_gpu_b64", "application/json", bytes.NewBuffer(payload))
-	var initData map[string]string
-	json.NewDecoder(resp.Body).Decode(&initData)
 
-	// 2. Fetch audio
-	resp2, _ := http.Get(apiBase + "/gradio_api/call/generate_gpu_b64/" + initData["event_id"])
-	bodyBytes, _ := io.ReadAll(resp2.Body)
+	req, _ := http.NewRequest("POST", apiBase+"/v1/audio/speech", bytes.NewBuffer(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	for _, line := range strings.Split(string(bodyBytes), "\\n") {
-		if strings.HasPrefix(line, "data:") {
-			var dataArr []string
-			json.Unmarshal([]byte(line[5:]), &dataArr)
-			audioBytes, _ := base64.StdEncoding.DecodeString(dataArr[0])
-			os.WriteFile("speech.wav", audioBytes, 0644)
-			fmt.Println("Audio saved -> speech.wav")
-			return
-		}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
 	}
+	defer resp.Body.Close()
+
+	audioBytes, _ := io.ReadAll(resp.Body)
+	os.WriteFile("speech.wav", audioBytes, 0644)
+	fmt.Printf("Audio saved -> speech.wav (%d bytes)\\n", len(audioBytes))
 }`
 
 export function DocsTab() {
@@ -241,7 +245,7 @@ export function DocsTab() {
               <span className="rounded px-2 py-0.5 text-[10px] font-semibold bg-violet-500/10 text-violet-400 border border-violet-500/30">v2.0 Production</span>
             </div>
             <p className="text-xs text-zinc-400 mt-1">
-              Ultra-low latency streaming text-to-speech API gateway running on NVIDIA ZeroGPU 24kHz neural synthesis.
+              Dedicated 4-Core Ampere A1 neural speech engine with direct HTTPS REST API and real-time SSE streaming.
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -257,12 +261,12 @@ export function DocsTab() {
         {/* Global Connection Endpoints */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
           <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3.5 space-y-1">
-            <span className="text-[10px] font-mono uppercase text-zinc-500 font-semibold block">Production API Gateway Base URL</span>
-            <code className="text-xs font-mono text-emerald-400 select-all block">https://voice.axiogen.in/api</code>
+            <span className="text-[10px] font-mono uppercase text-zinc-500 font-semibold block">Production API Base URL (Direct)</span>
+            <code className="text-xs font-mono text-emerald-400 select-all block">https://api.axiogen.in</code>
           </div>
           <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3.5 space-y-1">
             <span className="text-[10px] font-mono uppercase text-zinc-500 font-semibold block">Authentication Method</span>
-            <code className="text-xs font-mono text-zinc-200 select-all block">api_key parameter (<code>teamaxiogen_admin_master</code> / <code>axg_...</code>)</code>
+            <code className="text-xs font-mono text-zinc-200 select-all block">Authorization: Bearer YOUR_API_KEY</code>
           </div>
         </div>
       </div>
@@ -302,7 +306,7 @@ export function DocsTab() {
                   <FileCode className="w-4 h-4 text-violet-400" />
                   <span>Integration SDKs & Code Examples</span>
                 </h2>
-                <p className="text-xs text-zinc-400 mt-0.5">Direct copy-pasteable examples using your branded endpoint <code>voice.axiogen.in</code>.</p>
+                <p className="text-xs text-zinc-400 mt-0.5">Direct copy-pasteable examples using your dedicated endpoint <code>api.axiogen.in</code>.</p>
               </div>
 
               {/* Language Switcher */}
@@ -337,7 +341,7 @@ export function DocsTab() {
               {activeLang === 'react' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs text-zinc-400">
-                    <span>Drop-in hook for any React / Next.js app connecting to <code>voice.axiogen.in</code>:</span>
+                    <span>Drop-in hook for any React / Next.js app connecting to <code>api.axiogen.in</code>:</span>
                   </div>
                   <CodeBlock code={REACT_HOOK_CODE} language="typescript" />
                 </div>
@@ -369,7 +373,7 @@ export function DocsTab() {
               {activeLang === 'curl' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs text-zinc-400">
-                    <span>Standard cURL command pointing to <code>voice.axiogen.in</code>:</span>
+                    <span>Standard cURL commands pointing to <code>api.axiogen.in</code>:</span>
                   </div>
                   <CodeBlock code={CURL_SNIPPET} language="bash" />
                 </div>
@@ -377,7 +381,7 @@ export function DocsTab() {
               {activeLang === 'go' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs text-zinc-400">
-                    <span>Golang client to synthesize and save WAV speech from <code>voice.axiogen.in</code>:</span>
+                    <span>Golang client to synthesize and save WAV speech from <code>api.axiogen.in</code>:</span>
                   </div>
                   <CodeBlock code={GO_CODE} language="go" />
                 </div>
@@ -394,94 +398,123 @@ export function DocsTab() {
           <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-6 space-y-4">
             <div className="flex items-center gap-2">
               <span className="rounded bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-xs font-bold text-emerald-400">POST</span>
-              <code className="text-sm font-mono text-white font-semibold">https://voice.axiogen.in/api/gradio_api/call/stream_tts</code>
-              <span className="ml-auto text-xs font-mono text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">Chunk Streaming (SSE)</span>
+              <code className="text-sm font-mono text-white font-semibold">https://api.axiogen.in/v1/tts/stream</code>
+              <span className="ml-auto text-xs font-mono text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">SSE Streaming</span>
             </div>
             <p className="text-xs text-zinc-400 leading-relaxed">
-              Streams audio clause-by-clause over an SSE connection through the <code>voice.axiogen.in</code> API gateway.
+              Streams audio clause-by-clause over an SSE connection. Each chunk contains base64-encoded WAV audio that plays immediately while subsequent chunks synthesize in parallel.
             </p>
 
             <div className="space-y-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 block">Payload Parameters (Array Schema)</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 block">Request Body (JSON)</span>
               <div className="overflow-hidden rounded-lg border border-zinc-800">
                 <table className="w-full text-xs text-left">
                   <thead>
                     <tr className="border-b border-zinc-800 bg-zinc-950 font-mono text-zinc-400">
-                      <th className="py-2 px-3">Position</th>
-                      <th className="py-2 px-3">Name</th>
+                      <th className="py-2 px-3">Field</th>
                       <th className="py-2 px-3">Type</th>
+                      <th className="py-2 px-3">Required</th>
                       <th className="py-2 px-3">Description</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/60 bg-zinc-950/40 font-mono text-[11px]">
                     <tr>
-                      <td className="py-2 px-3 text-zinc-500">data[0]</td>
-                      <td className="py-2 px-3 text-violet-400 font-semibold">text</td>
+                      <td className="py-2 px-3 text-violet-400 font-semibold">input</td>
                       <td className="py-2 px-3 text-zinc-400">string</td>
+                      <td className="py-2 px-3 text-emerald-400">Yes</td>
                       <td className="py-2 px-3 text-zinc-300 font-sans text-xs">Text to speak (up to 5,000 characters).</td>
                     </tr>
                     <tr>
-                      <td className="py-2 px-3 text-zinc-500">data[1]</td>
                       <td className="py-2 px-3 text-violet-400 font-semibold">voice</td>
                       <td className="py-2 px-3 text-zinc-400">string</td>
-                      <td className="py-2 px-3 text-zinc-300 font-sans text-xs">Voice ID (any of the 54 neural voices e.g. <code>af_bella</code>, <code>af_nicole</code>).</td>
+                      <td className="py-2 px-3 text-zinc-500">No</td>
+                      <td className="py-2 px-3 text-zinc-300 font-sans text-xs">Voice ID (default: <code>af_bella</code>). See 54-Voice Library.</td>
                     </tr>
                     <tr>
-                      <td className="py-2 px-3 text-zinc-500">data[2]</td>
                       <td className="py-2 px-3 text-violet-400 font-semibold">speed</td>
                       <td className="py-2 px-3 text-zinc-400">float</td>
+                      <td className="py-2 px-3 text-zinc-500">No</td>
                       <td className="py-2 px-3 text-zinc-300 font-sans text-xs">Speaking rate between <code>0.5</code> and <code>2.0</code>. Default: <code>1.0</code>.</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 text-zinc-500">data[3]</td>
-                      <td className="py-2 px-3 text-violet-400 font-semibold">api_key</td>
-                      <td className="py-2 px-3 text-emerald-400 font-semibold">string</td>
-                      <td className="py-2 px-3 text-zinc-300 font-sans text-xs">Axiogen API Token (<code>teamaxiogen_admin_master</code> or <code>axg_...</code>).</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             </div>
+
+            <div className="space-y-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 block">SSE Response Chunk Format</span>
+              <div className="font-mono text-xs text-zinc-300 bg-zinc-950 p-3 rounded-lg border border-zinc-800">
+                {`data: {"index": 0, "text": "Hello!", "audio": "<base64_wav>", "duration": 0.66, "gen_time_ms": 681.2}`}
+              </div>
+            </div>
           </div>
 
-          {/* Endpoint 2: Full Synchronous Audio */}
+          {/* Endpoint 2: Full Synchronous Audio (OpenAI Compatible) */}
           <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-6 space-y-4">
             <div className="flex items-center gap-2">
               <span className="rounded bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-xs font-bold text-emerald-400">POST</span>
-              <code className="text-sm font-mono text-white font-semibold">https://voice.axiogen.in/api/gradio_api/call/generate_gpu_b64</code>
-              <span className="ml-auto text-xs font-mono text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">Complete Audio</span>
+              <code className="text-sm font-mono text-white font-semibold">https://api.axiogen.in/v1/audio/speech</code>
+              <span className="ml-auto text-xs font-mono text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">OpenAI Compatible</span>
             </div>
             <p className="text-xs text-zinc-400 leading-relaxed">
-              Synthesizes complete input text and returns a unified base64-encoded WAV PCM 24kHz string via <code>voice.axiogen.in</code>.
+              Synthesizes complete input text and returns a single <code>audio/wav</code> file. Drop-in compatible with the OpenAI TTS API format.
             </p>
             <div className="text-xs font-mono text-zinc-400 bg-zinc-950 p-3 rounded-lg border border-zinc-800">
-              Payload: <code className="text-zinc-200">{"{\"data\": [\"Text\", \"af_bella\", 1.0, \"YOUR_API_KEY\"]}"}</code>
+              Body: <code className="text-zinc-200">{`{"input": "Your text here", "voice": "af_bella", "speed": 1.0}`}</code>
+              <br />
+              Response: <code className="text-emerald-400">audio/wav (PCM 16-bit, 24kHz)</code>
             </div>
           </div>
 
-          {/* Endpoint 3: Key Management API */}
+          {/* Endpoint 3: Health & Voices */}
+          <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="rounded bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 text-xs font-bold text-blue-400">GET</span>
+              <h3 className="text-sm font-semibold text-white">Utility Endpoints</h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-1">
+                <span className="text-[10px] font-bold text-emerald-400 uppercase">Health Check</span>
+                <code className="text-[11px] font-mono text-zinc-200 block">GET https://api.axiogen.in/health</code>
+                <span className="text-[10px] text-zinc-500 block">Returns engine status, uptime, voice count</span>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-1">
+                <span className="text-[10px] font-bold text-emerald-400 uppercase">Voice Catalog</span>
+                <code className="text-[11px] font-mono text-zinc-200 block">GET https://api.axiogen.in/v1/voices</code>
+                <span className="text-[10px] text-zinc-500 block">Returns all 54 voices with metadata</span>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-1">
+                <span className="text-[10px] font-bold text-emerald-400 uppercase">Swagger Docs</span>
+                <code className="text-[11px] font-mono text-zinc-200 block">GET https://api.axiogen.in/docs</code>
+                <span className="text-[10px] text-zinc-500 block">Interactive API documentation</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Endpoint 4: Key Management API */}
           <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-6 space-y-4">
             <div className="flex items-center gap-2">
               <span className="rounded bg-violet-500/10 border border-violet-500/30 px-2 py-0.5 text-xs font-bold text-violet-400">DATABASE</span>
               <h3 className="text-sm font-semibold text-white">Programmatic API Key Management</h3>
             </div>
-            <p className="text-xs text-zinc-400">Manage user API keys directly via database endpoints on <code>voice.axiogen.in</code>:</p>
+            <p className="text-xs text-zinc-400">Manage user API keys directly via REST endpoints on <code>api.axiogen.in</code>:</p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-1">
                 <span className="text-[10px] font-bold text-emerald-400 uppercase">Create Key</span>
-                <code className="text-[11px] font-mono text-zinc-200 block">POST https://voice.axiogen.in/api/gradio_api/call/db_create_key</code>
-                <span className="text-[10px] text-zinc-500 block">Payload: <code>['Key Name']</code></span>
+                <code className="text-[11px] font-mono text-zinc-200 block">POST https://api.axiogen.in/v1/keys/create</code>
+                <span className="text-[10px] text-zinc-500 block">Body: <code>{`{"name": "My App"}`}</code></span>
               </div>
               <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-1">
                 <span className="text-[10px] font-bold text-emerald-400 uppercase">List Keys</span>
-                <code className="text-[11px] font-mono text-zinc-200 block">POST https://voice.axiogen.in/api/gradio_api/call/db_list_keys</code>
-                <span className="text-[10px] text-zinc-500 block">Payload: <code>[]</code></span>
+                <code className="text-[11px] font-mono text-zinc-200 block">GET https://api.axiogen.in/v1/keys/list</code>
+                <span className="text-[10px] text-zinc-500 block">Returns all active API keys</span>
               </div>
               <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-1">
                 <span className="text-[10px] font-bold text-red-400 uppercase">Revoke Key</span>
-                <code className="text-[11px] font-mono text-zinc-200 block">POST https://voice.axiogen.in/api/gradio_api/call/db_revoke_key</code>
-                <span className="text-[10px] text-zinc-500 block">Payload: <code>['key_id']</code></span>
+                <code className="text-[11px] font-mono text-zinc-200 block">DELETE https://api.axiogen.in/v1/keys/revoke</code>
+                <span className="text-[10px] text-zinc-500 block">Query: <code>?key_id=key_xxx</code></span>
               </div>
             </div>
           </div>
@@ -532,7 +565,7 @@ export function DocsTab() {
               <span>Strict Authentication Protocol</span>
             </h2>
             <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-              Every request to Axiogen Voice Engine must contain a valid API key. Unauthorized requests are immediately blocked with zero GPU compute processed.
+              Every request to Axiogen Voice Engine must contain a valid API key via <code>Authorization: Bearer</code> header, <code>X-API-Key</code> header, or <code>api_key</code> query parameter. Unauthorized requests are immediately blocked.
             </p>
           </div>
 
@@ -575,7 +608,7 @@ export function DocsTab() {
         <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-6 space-y-5">
           <div>
             <h2 className="text-sm font-bold text-white">Audio & Engine Specifications</h2>
-            <p className="text-xs text-zinc-400 mt-0.5">Technical specifications of the neural speech engine:</p>
+            <p className="text-xs text-zinc-400 mt-0.5">Technical specifications of the dedicated neural speech engine:</p>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -595,9 +628,9 @@ export function DocsTab() {
               <div className="text-[10px] text-zinc-500 mt-0.5">Optimized for Voice</div>
             </div>
             <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3.5 text-center">
-              <div className="text-[10px] font-mono uppercase text-zinc-500">Hardware Accel</div>
-              <div className="font-mono text-lg font-bold text-emerald-400 mt-1">RTX 6000 Ada</div>
-              <div className="text-[10px] text-zinc-500 mt-0.5">FP16 CUDA Execution</div>
+              <div className="text-[10px] font-mono uppercase text-zinc-500">Hardware</div>
+              <div className="font-mono text-lg font-bold text-emerald-400 mt-1">Ampere A1</div>
+              <div className="text-[10px] text-zinc-500 mt-0.5">4 OCPU · 24GB · Dedicated</div>
             </div>
           </div>
         </div>
