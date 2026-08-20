@@ -50,7 +50,7 @@ export function ApiKeysTab() {
     }
   }, [keys])
 
-  // Fetch keys from backend and merge with local keys (NEVER wipe local keys!)
+  // Fetch keys directly from server SQLite database
   const fetchDbKeys = useCallback(async () => {
     setIsLoading(true)
     try {
@@ -60,17 +60,9 @@ export function ApiKeysTab() {
       if (!res.ok) throw new Error('Failed to connect to database')
       const dbKeys: ApiKey[] = await res.json()
 
-      if (Array.isArray(dbKeys) && dbKeys.length > 0) {
-        setKeys(prev => {
-          const map = new Map<string, ApiKey>()
-          // 1. Add current local keys
-          prev.forEach(k => map.set(k.key, k))
-          // 2. Merge server DB keys
-          dbKeys.forEach(k => map.set(k.key, k))
-          const merged = Array.from(map.values())
-          localStorage.setItem('axiogen_user_keys', JSON.stringify(merged))
-          return merged
-        })
+      if (Array.isArray(dbKeys)) {
+        setKeys(dbKeys)
+        localStorage.setItem('axiogen_user_keys', JSON.stringify(dbKeys))
       }
     } catch (err) {
       console.warn('Database sync note:', err)
@@ -98,36 +90,13 @@ export function ApiKeysTab() {
     })
   }
 
-  // Create key permanently
+  // Create key permanently in server SQLite database
   const handleCreate = async () => {
     const keyName = newName.trim() || 'API Key'
     setShowCreateModal(false)
     setIsLoading(true)
-
-    const randomHex = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('')
-    const generatedToken = `axg_${randomHex}`
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
-
-    const newEntry: ApiKey = {
-      id: `key_${randomHex.slice(0, 12)}`,
-      name: keyName,
-      key: generatedToken,
-      created: now,
-      active: true,
-    }
-
-    // 1. Immediately save locally so it CANNOT be lost
-    setKeys(prev => {
-      const updated = [newEntry, ...prev.filter(x => x.key !== newEntry.key)]
-      localStorage.setItem('axiogen_user_keys', JSON.stringify(updated))
-      return updated
-    })
-    setCreatedKeyData(newEntry)
     setNewName('')
 
-    // 2. Sync with database
     try {
       const res = await fetch(`${API_BASE}/v1/keys/create`, {
         method: 'POST',
@@ -141,36 +110,31 @@ export function ApiKeysTab() {
         const serverKey = await res.json()
         if (serverKey && serverKey.key) {
           setCreatedKeyData(serverKey)
-          setKeys(prev => {
-            const updated = [serverKey, ...prev.filter(x => x.key !== newEntry.key && x.key !== serverKey.key)]
-            localStorage.setItem('axiogen_user_keys', JSON.stringify(updated))
-            return updated
-          })
+          // Refresh list from database
+          await fetchDbKeys()
         }
       }
     } catch (err) {
-      console.warn('Sync warning:', err)
+      console.warn('Create key error:', err)
     } finally {
       setIsLoading(false)
     }
   }
 
-  // Revoke key
+  // Revoke key in server SQLite database
   const handleRevoke = async (keyId: string) => {
     if (keyId === 'master') return
-    setKeys(prev => {
-      const updated = prev.filter(x => x.id !== keyId)
-      localStorage.setItem('axiogen_user_keys', JSON.stringify(updated))
-      return updated
-    })
-
+    setIsLoading(true)
     try {
       await fetch(`${API_BASE}/v1/keys/revoke?key_id=${encodeURIComponent(keyId)}`, {
         method: 'DELETE',
         headers: { 'Authorization': 'Bearer teamaxiogen_admin_master' }
       })
+      await fetchDbKeys()
     } catch (err) {
       console.warn('Revoke sync error:', err)
+    } finally {
+      setIsLoading(false)
     }
   }
 
